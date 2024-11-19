@@ -1,9 +1,8 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 import os
 import json
 
-# Autosave interval (in milliseconds)
 AUTOSAVE_INTERVAL = 1000  # 5 seconds
 
 
@@ -45,6 +44,9 @@ class SimpleNoteApp:
         self.add_note_button = tk.Button(self.notes_frame, text="Add Note", command=self.add_note)
         self.add_note_button.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
 
+        self.rename_note_button = tk.Button(self.notes_frame, text="Rename Note", command=self.rename_note)
+        self.rename_note_button.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+
         self.delete_note_button = tk.Button(self.notes_frame, text="Delete Note", command=self.delete_note)
         self.delete_note_button.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
 
@@ -81,11 +83,38 @@ class SimpleNoteApp:
 
     def add_note(self):
         """Add a new note."""
-        note_name = f"New Note {len(self.notes_data) + 1}"
+        note_name = simpledialog.askstring("New Note", "Enter the name for the new note:")
+        if not note_name:
+            messagebox.showerror("Error", "Note name cannot be empty.")
+            return
+        if note_name in self.notes_data:
+            messagebox.showerror("Error", "A note with this name already exists.")
+            return
         self.notes_data[note_name] = ""
         self.refresh_notes_list()
         self.notes_listbox.select_set(tk.END)
         self.load_selected_note()
+
+    def rename_note(self):
+        """Rename the selected note."""
+        selected_index = self.notes_listbox.curselection()
+        if not selected_index:
+            messagebox.showerror("Error", "Please select a note to rename.")
+            return
+        old_name = self.notes_listbox.get(selected_index)
+        new_name = simpledialog.askstring("Rename Note", f"Enter a new name for '{old_name}':")
+        if not new_name:
+            messagebox.showerror("Error", "Note name cannot be empty.")
+            return
+        if new_name in self.notes_data:
+            messagebox.showerror("Error", "A note with this name already exists.")
+            return
+        # Update the note name in the data
+        self.notes_data[new_name] = self.notes_data.pop(old_name)
+        self.refresh_notes_list()
+        self.notes_listbox.select_set(selected_index)
+        self.current_note = new_name
+        self.status_var.set(f"Renamed '{old_name}' to '{new_name}'.")
 
     def delete_note(self):
         """Delete the selected note."""
