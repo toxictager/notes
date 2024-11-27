@@ -3,7 +3,22 @@ from tkinter import messagebox, simpledialog
 import os
 import json
 
-AUTOSAVE_INTERVAL = 1000  # 1 second
+# Define colors for light and dark mode
+LIGHT_MODE = {
+    'bg': 'white',
+    'fg': 'black',
+    'button_bg': 'lightgray',
+    'button_fg': 'black'
+}
+
+DARK_MODE = {
+    'bg': '#2E2E2E',
+    'fg': 'white',
+    'button_bg': '#444444',
+    'button_fg': 'white'
+}
+
+CONFIG_FILE = "config.json"  # Configuration file for saving settings
 
 
 class SimpleNoteApp:
@@ -12,18 +27,18 @@ class SimpleNoteApp:
         self.root.title("Simple Note-Taking App")
         self.root.geometry("800x600")
 
-        # Initialize data
+        # Initialize theme and notes data
         self.notes_data = {}
-        self.current_note = None
         self.notes_file = "notes.json"
-        self.theme_file = "theme.json"
+
+        # Load theme from config or use default
+        self.current_mode = self.load_theme()
 
         # UI Components
         self.setup_ui()
 
-        # Load notes and theme after UI is initialized
+        # Load notes after UI is initialized
         self.load_notes()
-        self.load_theme()
 
         # Start autosave
         self.autosave()
@@ -31,40 +46,45 @@ class SimpleNoteApp:
     def setup_ui(self):
         """Setup the user interface."""
         # Frames for layout
-        self.notes_frame = tk.Frame(self.root, width=200, bg="lightgray")
+        self.notes_frame = tk.Frame(self.root, width=200, bg=self.current_mode['bg'])
         self.notes_frame.pack(side=tk.LEFT, fill=tk.Y)
 
-        self.editor_frame = tk.Frame(self.root)
+        self.editor_frame = tk.Frame(self.root, bg=self.current_mode['bg'])
         self.editor_frame.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
 
         # Notes listbox
-        self.notes_listbox = tk.Listbox(self.notes_frame)
+        self.notes_listbox = tk.Listbox(self.notes_frame, bg=self.current_mode['bg'], fg=self.current_mode['fg'])
         self.notes_listbox.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.notes_listbox.bind("<<ListboxSelect>>", self.load_selected_note)
 
         # Buttons for note management
-        self.add_note_button = tk.Button(self.notes_frame, text="Add Note", command=self.add_note)
+        self.add_note_button = tk.Button(self.notes_frame, text="Add Note", command=self.add_note,
+                                         bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
         self.add_note_button.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
 
-        self.rename_note_button = tk.Button(self.notes_frame, text="Rename Note", command=self.rename_note)
+        self.rename_note_button = tk.Button(self.notes_frame, text="Rename Note", command=self.rename_note,
+                                            bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
         self.rename_note_button.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
 
-        self.delete_note_button = tk.Button(self.notes_frame, text="Delete Note", command=self.delete_note)
+        self.delete_note_button = tk.Button(self.notes_frame, text="Delete Note", command=self.delete_note,
+                                            bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
         self.delete_note_button.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
 
-        # Dark mode toggle
-        self.dark_mode_button = tk.Button(self.notes_frame, text="Toggle Dark Mode", command=self.toggle_theme)
-        self.dark_mode_button.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+        # Dark Mode Toggle Button
+        self.toggle_dark_mode_button = tk.Button(self.root, text="Toggle Dark Mode", command=self.toggle_dark_mode,
+                                                 bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
+        self.toggle_dark_mode_button.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
 
         # Text editor
-        self.text_editor = tk.Text(self.editor_frame, wrap=tk.WORD)
+        self.text_editor = tk.Text(self.editor_frame, wrap=tk.WORD, bg=self.current_mode['bg'], fg=self.current_mode['fg'])
         self.text_editor.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
         self.text_editor.bind("<KeyRelease>", self.mark_dirty)
 
         # Status bar
         self.status_var = tk.StringVar()
         self.status_var.set("Ready")
-        self.status_bar = tk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor="w")
+        self.status_bar = tk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor="w",
+                                   bg=self.current_mode['bg'], fg=self.current_mode['fg'])
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def load_notes(self):
@@ -115,10 +135,10 @@ class SimpleNoteApp:
         if new_name in self.notes_data:
             messagebox.showerror("Error", "A note with this name already exists.")
             return
+        # Update the note name in the data
         self.notes_data[new_name] = self.notes_data.pop(old_name)
         self.refresh_notes_list()
         self.notes_listbox.select_set(selected_index)
-        self.current_note = new_name
         self.status_var.set(f"Renamed '{old_name}' to '{new_name}'.")
 
     def delete_note(self):
@@ -131,7 +151,6 @@ class SimpleNoteApp:
         del self.notes_data[note_name]
         self.refresh_notes_list()
         self.text_editor.delete("1.0", tk.END)
-        self.current_note = None
 
     def load_selected_note(self, event=None):
         """Load the selected note into the editor."""
@@ -139,70 +158,57 @@ class SimpleNoteApp:
         if not selected_index:
             return
         note_name = self.notes_listbox.get(selected_index)
-        self.current_note = note_name
         self.text_editor.delete("1.0", tk.END)
         self.text_editor.insert(tk.END, self.notes_data[note_name])
 
     def mark_dirty(self, event=None):
         """Mark the current note as dirty (modified)."""
-        if self.current_note:
-            self.notes_data[self.current_note] = self.text_editor.get("1.0", tk.END).strip()
-            self.status_var.set("Unsaved changes...")
+        selected_index = self.notes_listbox.curselection()
+        if selected_index:
+            note_name = self.notes_listbox.get(selected_index)
+            self.notes_data[note_name] = self.text_editor.get("1.0", tk.END)
+            self.status_var.set("Unsaved changes")
 
-    def autosave(self):
-        """Autosave the notes periodically."""
-        self.save_notes()
-        self.status_var.set("All changes saved.")
-        self.root.after(AUTOSAVE_INTERVAL, self.autosave)
+    def toggle_dark_mode(self):
+        """Toggle between light and dark mode."""
+        self.current_mode = DARK_MODE if self.current_mode == LIGHT_MODE else LIGHT_MODE
+        self.save_theme()  # Save the selected theme
+        self.apply_theme()
+
+    def apply_theme(self):
+        """Apply the selected theme (light or dark)."""
+        self.root.config(bg=self.current_mode['bg'])
+        self.notes_frame.config(bg=self.current_mode['bg'])
+        self.editor_frame.config(bg=self.current_mode['bg'])
+        self.notes_listbox.config(bg=self.current_mode['bg'], fg=self.current_mode['fg'])
+        self.text_editor.config(bg=self.current_mode['bg'], fg=self.current_mode['fg'])
+        self.status_bar.config(bg=self.current_mode['bg'], fg=self.current_mode['fg'])
+        self.add_note_button.config(bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
+        self.rename_note_button.config(bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
+        self.delete_note_button.config(bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
+        self.toggle_dark_mode_button.config(bg=self.current_mode['button_bg'], fg=self.current_mode['button_fg'])
 
     def load_theme(self):
-        """Load the theme from a JSON file."""
-        if os.path.exists(self.theme_file):
-            with open(self.theme_file, "r") as file:
-                theme = json.load(file)
-            if theme.get("mode") == "dark":
-                self.apply_dark_theme()
-            else:
-                self.apply_light_theme()
-        else:
-            self.apply_light_theme()
+        """Load the theme preference from the config file."""
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r") as file:
+                config = json.load(file)
+                return DARK_MODE if config.get("theme") == "dark" else LIGHT_MODE
+        return LIGHT_MODE  # Default to light mode if no config exists
 
-    def save_theme(self, mode):
-        """Save the theme to a JSON file."""
-        with open(self.theme_file, "w") as file:
-            json.dump({"mode": mode}, file)
+    def save_theme(self):
+        """Save the current theme to the config file."""
+        config = {"theme": "dark" if self.current_mode == DARK_MODE else "light"}
+        with open(CONFIG_FILE, "w") as file:
+            json.dump(config, file)
 
-    def apply_dark_theme(self):
-        """Apply the dark theme."""
-        self.root.configure(bg="#2e2e2e")
-        self.notes_frame.configure(bg="#3e3e3e")
-        self.editor_frame.configure(bg="#2e2e2e")
-        self.text_editor.configure(bg="#2e2e2e", fg="white", insertbackground="white")
-        self.notes_listbox.configure(bg="#3e3e3e", fg="white")
-        self.status_bar.configure(bg="#3e3e3e", fg="white")
-        self.dark_mode_button.configure(bg="#4e4e4e", fg="white", text="Switch to Light Mode")
-        self.save_theme("dark")
-
-    def apply_light_theme(self):
-        """Apply the light theme."""
-        self.root.configure(bg="white")
-        self.notes_frame.configure(bg="lightgray")
-        self.editor_frame.configure(bg="white")
-        self.text_editor.configure(bg="white", fg="black", insertbackground="black")
-        self.notes_listbox.configure(bg="white", fg="black")
-        self.status_bar.configure(bg="lightgray", fg="black")
-        self.dark_mode_button.configure(bg="lightgray", fg="black", text="Switch to Dark Mode")
-        self.save_theme("light")
-
-    def toggle_theme(self):
-        """Toggle between light and dark themes."""
-        if self.dark_mode_button.cget("text") == "Switch to Dark Mode":
-            self.apply_dark_theme()
-        else:
-            self.apply_light_theme()
+    def autosave(self):
+        """Automatically save the notes every few seconds."""
+        self.save_notes()
+        self.root.after(5000, self.autosave)  # Autosave every 5 seconds
 
 
-# Create the main application window
-root = tk.Tk()
-app = SimpleNoteApp(root)
-root.mainloop()
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SimpleNoteApp(root)
+    root.mainloop()
